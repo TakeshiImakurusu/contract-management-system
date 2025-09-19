@@ -1,4 +1,4 @@
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,7 +20,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { Contract, ContractExtras, Order, OrderStatus, TabKey } from "@/types";
+import { cn } from "@/lib/utils";
+import type {
+  Contract,
+  ContractExtras,
+  ContractLine,
+  Order,
+  OrderDraft,
+  OrderStatus,
+  OrderSummary,
+  TabKey,
+} from "@/types";
 
 const families = ["デキスパート", "INNOSiTE", "クラウド"] as const;
 type ContractFamily = (typeof families)[number];
@@ -41,6 +51,28 @@ type TabDefinition = {
   key: TabKey;
   label: string;
   badgeTone: BadgeTone;
+};
+
+type DiffFlags = {
+  plan: boolean;
+  qty: boolean;
+  unitPrice: boolean;
+  period: boolean;
+};
+
+type DiffComparison = {
+  key: string;
+  label: string;
+  orderLine: OrderSummary | null;
+  contractLine: ContractLine | null;
+  differences: DiffFlags;
+};
+
+const draftStatusBadge: Record<OrderDraft["status"], BadgeTone> = {
+  draft: "muted",
+  submitted: "info",
+  approved: "success",
+  posted: "success",
 };
 
 const tabs: TabDefinition[] = [
@@ -81,6 +113,16 @@ const seedOrders: Order[] = [
     assigned: null,
     status: "received",
     total: 320000,
+    lines: [
+      {
+        product: "SiTE-SCOPE",
+        plan: "annual",
+        qty: 10,
+        unitPrice: 32000,
+        startDate: "2025-09-22",
+        endDate: "2026-09-21",
+      },
+    ],
   },
   {
     id: "o8",
@@ -95,6 +137,16 @@ const seedOrders: Order[] = [
     assigned: null,
     status: "received",
     total: 60000,
+    lines: [
+      {
+        product: "SiTE-SCOPE",
+        plan: "annual",
+        qty: 2,
+        unitPrice: 30000,
+        startDate: "2025-09-19",
+        endDate: "2026-09-18",
+      },
+    ],
   },
   {
     id: "o2",
@@ -109,6 +161,16 @@ const seedOrders: Order[] = [
     assigned: "山田",
     status: "validating",
     total: 90000,
+    lines: [
+      {
+        product: "SiTECH 3D",
+        plan: "annual",
+        qty: 3,
+        unitPrice: 30000,
+        startDate: "2025-09-20",
+        endDate: "2026-09-19",
+      },
+    ],
   },
   {
     id: "o4",
@@ -123,6 +185,16 @@ const seedOrders: Order[] = [
     assigned: "佐藤",
     status: "ready_for_approval",
     total: 210000,
+    lines: [
+      {
+        product: "SiTE-STRUCTURE",
+        plan: "annual",
+        qty: 5,
+        unitPrice: 42000,
+        startDate: "2025-09-21",
+        endDate: "2026-09-20",
+      },
+    ],
   },
   {
     id: "o5",
@@ -137,6 +209,16 @@ const seedOrders: Order[] = [
     assigned: "田中",
     status: "approved",
     total: 50000,
+    lines: [
+      {
+        product: "SiTE-SCOPE OP",
+        plan: "annual",
+        qty: 10,
+        unitPrice: 5000,
+        startDate: "2025-09-19",
+        endDate: "2026-09-18",
+      },
+    ],
   },
 ];
 
@@ -263,6 +345,18 @@ function formatDate(value: string | null) {
   return `${year}/${month}/${day}`;
 }
 
+function formatDateTime(value: string | null) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  const hours = `${date.getHours()}`.padStart(2, "0");
+  const minutes = `${date.getMinutes()}`.padStart(2, "0");
+  return `${year}/${month}/${day} ${hours}:${minutes}`;
+}
+
 function daysLeft(to: string) {
   const now = new Date();
   const end = new Date(`${to}T00:00:00+09:00`);
@@ -303,6 +397,46 @@ function KeyValue({ label, value }: { label: string; value: ReactNode }) {
   );
 }
 
+function DiffValue({ label, value, changed }: { label: string; value: ReactNode; changed: boolean }) {
+  return (
+    <div className="space-y-1">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div
+        className={cn(
+          "rounded-lg border px-3 py-2 text-sm",
+          changed ? "border-amber-300 bg-amber-50 text-amber-900" : "border-border bg-muted/60 text-foreground"
+        )}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function DiffColumn({
+  title,
+  line,
+  differences,
+}: {
+  title: string;
+  line: OrderSummary | ContractLine | null;
+  differences: DiffFlags;
+}) {
+  const period = line ? `${formatDate(line.startDate)} → ${formatDate(line.endDate)}` : "—";
+
+  return (
+    <div className="rounded-xl border border-border bg-card p-3 shadow-sm">
+      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</div>
+      <div className="mt-3 space-y-3">
+        <DiffValue label="プラン" value={line?.plan ?? "—"} changed={differences.plan} />
+        <DiffValue label="数量" value={line ? `${line.qty}` : "—"} changed={differences.qty} />
+        <DiffValue label="単価" value={line ? formatCurrency(line.unitPrice) : "—"} changed={differences.unitPrice} />
+        <DiffValue label="期間" value={period} changed={differences.period} />
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabKey>("tenants");
   const [orders, setOrders] = useState<Order[]>(seedOrders);
@@ -315,6 +449,10 @@ export default function App() {
   const [selectedTenantKid, setSelectedTenantKid] = useState<string | null>(null);
   const [contractModalOpen, setContractModalOpen] = useState(false);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [diffModalOpen, setDiffModalOpen] = useState(false);
+  const [diffContractId, setDiffContractId] = useState<string | null>(null);
+  const [orderDrafts, setOrderDrafts] = useState<Record<string, OrderDraft>>({});
+  const [draftSelection, setDraftSelection] = useState<Record<string, boolean>>({});
 
   const isTenantView = activeTab === "tenants";
   const currentOrderStates = orderStatesForTab[activeTab];
@@ -414,6 +552,114 @@ export default function App() {
     [contracts, orders]
   );
 
+  function toggleDraftSelection(lineKey: string) {
+    setDraftSelection((prev) => ({ ...prev, [lineKey]: !prev[lineKey] }));
+  }
+
+  function saveDraftFromSelection() {
+    if (!selectedOrder) return;
+    const selectedKeys = Object.entries(draftSelection)
+      .filter(([, value]) => value)
+      .map(([key]) => key);
+    if (selectedKeys.length === 0) return;
+
+    const lines = selectedOrder.lines
+      .filter((line) => selectedKeys.includes(`${line.product}::${line.plan}`))
+      .map((line) => ({ ...line }));
+
+    const now = new Date().toISOString();
+    setOrderDrafts((prev) => {
+      const existing = prev[selectedOrder.id];
+      const createdAt = existing?.createdAt ?? now;
+      const createdBy = existing?.createdBy ?? (selectedOrder.assigned ?? "担当者");
+
+      return {
+        ...prev,
+        [selectedOrder.id]: {
+          id: existing?.id ?? `draft-${selectedOrder.id}`,
+          orderId: selectedOrder.id,
+          contractId: diffTargetContract?.id ?? null,
+          lines,
+          status: "draft",
+          createdAt,
+          updatedAt: now,
+          createdBy,
+        },
+      };
+    });
+
+    setDiffModalOpen(false);
+  }
+
+  function submitDraftForApproval(orderId: string) {
+    const draft = orderDrafts[orderId];
+    if (!draft || draft.lines.length === 0) return;
+    const now = new Date().toISOString();
+    setOrderDrafts((prev) => ({
+      ...prev,
+      [orderId]: {
+        ...draft,
+        status: "submitted",
+        submittedAt: now,
+        approvedAt: undefined,
+        postedAt: undefined,
+        updatedAt: now,
+      },
+    }));
+    setOrders((prev) => prev.map((order) => (order.id === orderId ? { ...order, status: "ready_for_approval" } : order)));
+  }
+
+  function approveDraft(orderId: string) {
+    const draft = orderDrafts[orderId];
+    const now = new Date().toISOString();
+    if (!draft) return;
+    setOrderDrafts((prev) => ({
+      ...prev,
+      [orderId]: {
+        ...draft,
+        status: "approved",
+        approvedAt: now,
+        updatedAt: now,
+      },
+    }));
+    setOrders((prev) => prev.map((order) => (order.id === orderId ? { ...order, status: "approved" } : order)));
+  }
+
+  function postDraft(orderId: string) {
+    const draft = orderDrafts[orderId];
+    const now = new Date().toISOString();
+    if (!draft) return;
+    setOrderDrafts((prev) => ({
+      ...prev,
+      [orderId]: {
+        ...draft,
+        status: "posted",
+        postedAt: now,
+        updatedAt: now,
+      },
+    }));
+    setOrders((prev) => prev.map((order) => (order.id === orderId ? { ...order, status: "posted" } : order)));
+  }
+
+  function sendBackDraft(orderId: string) {
+    const draft = orderDrafts[orderId];
+    const now = new Date().toISOString();
+    if (draft) {
+      setOrderDrafts((prev) => ({
+        ...prev,
+        [orderId]: {
+          ...draft,
+          status: "draft",
+          submittedAt: undefined,
+          approvedAt: undefined,
+          postedAt: undefined,
+          updatedAt: now,
+        },
+      }));
+    }
+    setOrders((prev) => prev.map((order) => (order.id === orderId ? { ...order, status: "needs_fix" } : order)));
+  }
+
   function assignTo(orderId: string, assignee: string) {
     setOrders((prev) =>
       prev.map((order) =>
@@ -443,6 +689,128 @@ export default function App() {
   );
 
   const extras = selectedContract ? seedExtras[selectedContract.id] : undefined;
+
+  useEffect(() => {
+    if (!selectedOrder || contractsForSelectedOrder.length === 0) {
+      setDiffContractId(null);
+      return;
+    }
+    if (!diffContractId || !contractsForSelectedOrder.some((contract) => contract.id === diffContractId)) {
+      setDiffContractId(contractsForSelectedOrder[0].id);
+    }
+  }, [contractsForSelectedOrder, diffContractId, selectedOrder]);
+
+  const diffTargetContract = useMemo(
+    () =>
+      contractsForSelectedOrder.length === 0
+        ? null
+        : contractsForSelectedOrder.find((contract) => contract.id === diffContractId) ?? contractsForSelectedOrder[0] ?? null,
+    [contractsForSelectedOrder, diffContractId]
+  );
+
+  const draftForSelectedOrder = useMemo(
+    () => (selectedOrder ? orderDrafts[selectedOrder.id] ?? null : null),
+    [orderDrafts, selectedOrder]
+  );
+
+  const draftContract = useMemo(
+    () =>
+      draftForSelectedOrder?.contractId
+        ? contracts.find((contract) => contract.id === draftForSelectedOrder.contractId) ?? null
+        : null,
+    [contracts, draftForSelectedOrder]
+  );
+
+  const canSubmitDraft = !!draftForSelectedOrder && draftForSelectedOrder.status === "draft" && draftForSelectedOrder.lines.length > 0;
+  const canApproveDraft =
+    !!selectedOrder && selectedOrder.status === "ready_for_approval" && draftForSelectedOrder?.status === "submitted";
+  const canPostDraft =
+    !!selectedOrder && selectedOrder.status === "approved" && draftForSelectedOrder?.status === "approved";
+  const canSendBackDraft =
+    !!selectedOrder && (!!draftForSelectedOrder && ["ready_for_approval", "approved"].includes(selectedOrder.status));
+
+  const diffComparisons = useMemo(() => {
+    if (!diffModalOpen || !selectedOrder || !diffTargetContract) return [] as DiffComparison[];
+
+    const orderLines = selectedOrder.lines;
+    const contractLines = diffTargetContract.lines;
+
+    const orderMap = new Map<string, OrderSummary>();
+    const contractMap = new Map<string, ContractLine>();
+
+    for (const line of orderLines) {
+      orderMap.set(`${line.product}::${line.plan}`, line);
+    }
+    for (const line of contractLines) {
+      contractMap.set(`${line.product}::${line.plan}`, line);
+    }
+
+    const keys = new Set([...orderMap.keys(), ...contractMap.keys()]);
+
+    const comparisons: DiffComparison[] = [];
+    for (const key of Array.from(keys)) {
+      const orderLine = orderMap.get(key) ?? null;
+      const contractLine = contractMap.get(key) ?? null;
+      const productLabel = orderLine?.product ?? contractLine?.product ?? "不明な製品";
+      const planLabel = orderLine?.plan ?? contractLine?.plan ?? "—";
+
+      const planChanged = (orderLine?.plan ?? "—") !== (contractLine?.plan ?? "—");
+      const qtyChanged = (orderLine?.qty ?? 0) !== (contractLine?.qty ?? 0);
+      const unitPriceChanged = (orderLine?.unitPrice ?? 0) !== (contractLine?.unitPrice ?? 0);
+      const periodChanged =
+        (orderLine?.startDate ?? "") !== (contractLine?.startDate ?? "") ||
+        (orderLine?.endDate ?? "") !== (contractLine?.endDate ?? "");
+
+      comparisons.push({
+        key,
+        label: `${productLabel} / ${planLabel}`,
+        orderLine,
+        contractLine,
+        differences: {
+          plan: planChanged,
+          qty: qtyChanged,
+          unitPrice: unitPriceChanged,
+          period: periodChanged,
+        },
+      });
+    }
+
+    return comparisons.sort((a, b) => a.label.localeCompare(b.label, "ja"));
+  }, [diffModalOpen, diffTargetContract, selectedOrder]);
+
+  const draftSelectionCount = useMemo(
+    () => Object.values(draftSelection).filter(Boolean).length,
+    [draftSelection]
+  );
+
+  useEffect(() => {
+    if (!diffModalOpen || !selectedOrder) return;
+    const existingDraft = orderDrafts[selectedOrder.id];
+    const nextSelection: Record<string, boolean> = {};
+
+    if (existingDraft && existingDraft.lines.length > 0) {
+      for (const line of existingDraft.lines) {
+        nextSelection[`${line.product}::${line.plan}`] = true;
+      }
+    } else {
+      for (const item of diffComparisons) {
+        if (item.orderLine && Object.values(item.differences).some(Boolean)) {
+          nextSelection[item.key] = true;
+        }
+      }
+    }
+
+    const keys = new Set([...Object.keys(nextSelection), ...Object.keys(draftSelection)]);
+    const isSame = Array.from(keys).every((key) => {
+      const a = nextSelection[key] ?? false;
+      const b = draftSelection[key] ?? false;
+      return a === b;
+    });
+
+    if (!isSame) {
+      setDraftSelection(nextSelection);
+    }
+  }, [diffComparisons, diffModalOpen, draftSelection, orderDrafts, selectedOrder]);
 
   return (
     <div className="min-h-screen bg-muted/30 py-6">
@@ -678,10 +1046,11 @@ export default function App() {
                           })}
                         </div>
                       </CardContent>
-                    </Card>
-                  </div>
-                </ScrollArea>
-              ) : (
+                  </Card>
+
+                </div>
+              </ScrollArea>
+            ) : (
                 <Card className="flex-1">
                   <CardContent className="flex h-full items-center justify-center text-sm text-muted-foreground">
                     左の一覧からKENTEM IDを選択してください。
@@ -719,18 +1088,34 @@ export default function App() {
                         <Button variant="subtle" onClick={() => updateOrderStatus(selectedOrder.id, "validating")}>
                           検証を実行
                         </Button>
-                        <Button variant="default" onClick={() => updateOrderStatus(selectedOrder.id, "ready_for_approval")}>
-                          ドラフト作成→申請
-                        </Button>
-                        <Button variant="default" onClick={() => updateOrderStatus(selectedOrder.id, "approved")}>承認</Button>
                         <Button
                           variant="default"
-                          onClick={() => updateOrderStatus(selectedOrder.id, "posted")}
-                          disabled={selectedOrder.status !== "approved"}
+                          onClick={() => submitDraftForApproval(selectedOrder.id)}
+                          disabled={!canSubmitDraft}
+                        >
+                          ドラフト作成→申請
+                        </Button>
+                        <Button
+                          variant="default"
+                          onClick={() => approveDraft(selectedOrder.id)}
+                          disabled={!canApproveDraft}
+                        >
+                          承認
+                        </Button>
+                        <Button
+                          variant="default"
+                          onClick={() => postDraft(selectedOrder.id)}
+                          disabled={!canPostDraft}
                         >
                           本登録(:post)
                         </Button>
-                        <Button variant="destructive" onClick={() => updateOrderStatus(selectedOrder.id, "needs_fix")}>差戻し</Button>
+                        <Button
+                          variant="destructive"
+                          onClick={() => sendBackDraft(selectedOrder.id)}
+                          disabled={!canSendBackDraft}
+                        >
+                          差戻し
+                        </Button>
                       </div>
                     </CardContent>
                   </Card>
@@ -813,23 +1198,147 @@ export default function App() {
                   </div>
 
                   <Card>
-                    <CardHeader>
-                      <CardTitle className="text-base">差分プレビュー（例）</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-xs text-muted-foreground">現行↔︎契約案の差分例</div>
-                      <div className="mt-3 rounded-xl bg-muted/60 p-3 text-sm">
-                        <div className="flex items-center justify-between">
-                          <div>SiTE-SCOPE / annual × 10</div>
-                          <div>
-                            <span className="mr-2 text-xs text-muted-foreground line-through">¥32,000</span>
-                            <span className="font-semibold text-foreground">¥30,000</span>
-                          </div>
+                    <CardHeader className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                      <CardTitle className="text-base">差分プレビュー</CardTitle>
+                      {diffTargetContract && (
+                        <div className="text-xs text-muted-foreground md:text-right">
+                          比較対象契約: {diffTargetContract.contractNumber} v{diffTargetContract.version}
                         </div>
-                        <div className="mt-1 text-xs text-muted-foreground">キャンペーン適用: Autumn2025（-10%）</div>
-                      </div>
+                      )}
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {contractsForSelectedOrder.length === 0 ? (
+                        <div className="text-sm text-muted-foreground">比較できる現行契約がありません。</div>
+                      ) : selectedOrder.lines.length === 0 ? (
+                        <div className="text-sm text-muted-foreground">注文に比較対象となる明細がありません。</div>
+                      ) : (
+                        <>
+                          {contractsForSelectedOrder.length > 1 && (
+                            <div className="space-y-1">
+                              <div className="text-xs text-muted-foreground">比較対象の契約</div>
+                              <Select
+                                value={diffTargetContract?.id ?? undefined}
+                                onValueChange={(value) => setDiffContractId(value)}
+                              >
+                                <SelectTrigger className="w-full md:w-72">
+                                  <SelectValue placeholder="契約を選択" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {contractsForSelectedOrder.map((contract) => (
+                                    <SelectItem key={contract.id} value={contract.id}>
+                                      {contract.contractNumber} v{contract.version}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          )}
+                          <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
+                            <Button
+                              onClick={() => {
+                                if (!diffTargetContract && contractsForSelectedOrder[0]) {
+                                  setDiffContractId(contractsForSelectedOrder[0].id);
+                                }
+                                setDiffModalOpen(true);
+                              }}
+                              disabled={!diffTargetContract}
+                            >
+                              差分プレビュー
+                            </Button>
+                            <div className="text-xs text-muted-foreground">
+                              モーダル内でプラン・数量・単価・期間を左右に並べて比較します。
+                            </div>
+                          </div>
+                          <div className="text-[11px] text-muted-foreground">※ ボタン押下時に差分を取得します。</div>
+                          {draftForSelectedOrder && (
+                            <div className="rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground">
+                              <div className="flex items-center justify-between gap-2">
+                                <span>保存済みドラフト</span>
+                                <Badge variant={draftStatusBadge[draftForSelectedOrder.status]}>{draftForSelectedOrder.status}</Badge>
+                              </div>
+                              <div className="mt-1 flex flex-wrap gap-2 text-[11px]">
+                                <span>明細 {draftForSelectedOrder.lines.length} 件</span>
+                                <span>更新 {formatDateTime(draftForSelectedOrder.updatedAt)}</span>
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      )}
                     </CardContent>
                   </Card>
+
+                  {draftForSelectedOrder && (
+                    <Card>
+                      <CardHeader className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                        <CardTitle className="text-base">本登録予定ドラフト</CardTitle>
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                          <Badge variant={draftStatusBadge[draftForSelectedOrder.status]}>{draftForSelectedOrder.status}</Badge>
+                          <span>更新 {formatDateTime(draftForSelectedOrder.updatedAt)}</span>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="space-y-4 text-sm">
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <div>
+                            <div className="text-xs text-muted-foreground">比較対象契約</div>
+                            <div className="font-medium text-foreground">
+                              {draftContract
+                                ? `${draftContract.contractNumber} v${draftContract.version}`
+                                : draftForSelectedOrder.contractId ?? "未選択"}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-xs text-muted-foreground">作成者</div>
+                            <div className="font-medium text-foreground">{draftForSelectedOrder.createdBy}</div>
+                          </div>
+                          <div>
+                            <div className="text-xs text-muted-foreground">作成</div>
+                            <div>{formatDateTime(draftForSelectedOrder.createdAt)}</div>
+                          </div>
+                          {draftForSelectedOrder.submittedAt && (
+                            <div>
+                              <div className="text-xs text-muted-foreground">申請</div>
+                              <div>{formatDateTime(draftForSelectedOrder.submittedAt)}</div>
+                            </div>
+                          )}
+                          {draftForSelectedOrder.approvedAt && (
+                            <div>
+                              <div className="text-xs text-muted-foreground">承認</div>
+                              <div>{formatDateTime(draftForSelectedOrder.approvedAt)}</div>
+                            </div>
+                          )}
+                          {draftForSelectedOrder.postedAt && (
+                            <div>
+                              <div className="text-xs text-muted-foreground">本登録</div>
+                              <div>{formatDateTime(draftForSelectedOrder.postedAt)}</div>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="overflow-hidden rounded-xl border">
+                          <div className="grid grid-cols-12 bg-muted/60 px-4 py-2 text-xs font-semibold text-muted-foreground">
+                            <div className="col-span-4">製品 / プラン</div>
+                            <div className="col-span-2">数量</div>
+                            <div className="col-span-2">単価</div>
+                            <div className="col-span-4">期間</div>
+                          </div>
+                          <div className="divide-y">
+                            {draftForSelectedOrder.lines.map((line) => (
+                              <div key={`${line.product}-${line.plan}`} className="grid grid-cols-12 px-4 py-2">
+                                <div className="col-span-4">{line.product} / {line.plan}</div>
+                                <div className="col-span-2">{line.qty}</div>
+                                <div className="col-span-2">{formatCurrency(line.unitPrice)}</div>
+                                <div className="col-span-4">{formatDate(line.startDate)} → {formatDate(line.endDate)}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="text-[11px] text-muted-foreground">
+                          差分プレビューで編集→再保存するとドラフトは再度「draft」状態に戻ります。
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
                 </div>
               </ScrollArea>
             ) : (
@@ -842,6 +1351,83 @@ export default function App() {
           </section>
         </div>
       </div>
+
+      <Dialog open={diffModalOpen && !!selectedOrder && !!diffTargetContract} onOpenChange={setDiffModalOpen}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden">
+          {selectedOrder && diffTargetContract ? (
+            <ScrollArea className="max-h-[70vh] pr-2">
+              <DialogHeader>
+                <DialogTitle>差分プレビュー</DialogTitle>
+                <DialogDescription>
+                  {selectedOrder.orderNumber} ↔︎ {diffTargetContract.contractNumber}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 pb-4">
+                {diffComparisons.length > 0 ? (
+                  <>
+                    {diffComparisons.map((item) => {
+                      const isSelectable = !!item.orderLine;
+                      const isSelected = !!draftSelection[item.key];
+                      const hasAnyDiff = Object.values(item.differences).some(Boolean);
+                      return (
+                        <div
+                          key={item.key}
+                          className={cn(
+                            "space-y-3 rounded-xl border bg-card p-4 shadow-sm",
+                            isSelected ? "border-sky-300 ring-1 ring-sky-200" : "border-border",
+                            !isSelectable && "opacity-75"
+                          )}
+                        >
+                          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                            <div className="flex items-center gap-2">
+                              <div className="text-sm font-semibold text-foreground">{item.label}</div>
+                              {hasAnyDiff && <Badge variant="info">差分あり</Badge>}
+                            </div>
+                            {isSelectable ? (
+                              <Button
+                                size="sm"
+                                variant={isSelected ? "default" : "outline"}
+                                onClick={() => toggleDraftSelection(item.key)}
+                              >
+                                {isSelected ? "本登録対象" : "対象に含める"}
+                              </Button>
+                            ) : (
+                              <Badge variant="muted">契約のみ</Badge>
+                            )}
+                          </div>
+                          <div className="grid gap-3 md:grid-cols-2">
+                            <DiffColumn title="注文" line={item.orderLine} differences={item.differences} />
+                            <DiffColumn title="現行契約" line={item.contractLine} differences={item.differences} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <div className="flex flex-col gap-3 pt-2 md:flex-row md:items-center md:justify-between">
+                      <div className="text-xs text-muted-foreground">
+                        本登録対象に選択中: {draftSelectionCount} 件
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button variant="outline" size="sm" onClick={() => setDraftSelection({})} disabled={draftSelectionCount === 0}>
+                          全て解除
+                        </Button>
+                        <Button onClick={saveDraftFromSelection} disabled={draftSelectionCount === 0}>
+                          ドラフトとして保存
+                        </Button>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="rounded-xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
+                    比較できる明細がありません。
+                  </div>
+                )}
+              </div>
+            </ScrollArea>
+          ) : (
+            <div className="py-6 text-sm text-muted-foreground">比較対象がありません。</div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={contractModalOpen && !!selectedContract} onOpenChange={setContractModalOpen}>
         <DialogContent className="max-h-[80vh] overflow-hidden">

@@ -29,6 +29,7 @@ export interface Order {
   assigned: string | null;
   status: OrderStatus;
   total: number;
+  lines: OrderSummary[];
 }
 
 export interface ContractLine {
@@ -52,6 +53,20 @@ export interface Contract {
   version: number;
   total: number;
   lines: ContractLine[];
+}
+
+export interface OrderDraft {
+  id: string;
+  orderId: string;
+  contractId: string | null;
+  lines: OrderSummary[];
+  status: "draft" | "submitted" | "approved" | "posted";
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
+  submittedAt?: string;
+  approvedAt?: string;
+  postedAt?: string;
 }
 
 export interface ContractExtras {
