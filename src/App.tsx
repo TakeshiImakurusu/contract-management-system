@@ -881,7 +881,7 @@ export default function App() {
               <CardContent className="flex-1 overflow-hidden p-0">
                 {isTenantView ? (
                   <ScrollArea className="h-full">
-                    <div className="grid grid-cols-12 px-6 py-2 text-xs font-medium text-muted-foreground">
+                    <div className="hidden grid-cols-12 px-6 py-2 text-xs font-medium text-muted-foreground md:grid">
                       <div className="col-span-3">KENTEM ID / 顧客</div>
                       <div className="col-span-3">ファミリ内訳</div>
                       <div className="col-span-2">契約数</div>
@@ -896,34 +896,48 @@ export default function App() {
                             key={tenant.kentemId}
                             type="button"
                             onClick={() => setSelectedTenantKid(tenant.kentemId)}
-                            className={`grid w-full grid-cols-12 items-center px-6 py-3 text-left text-sm transition ${
+                            className={cn(
+                              "w-full text-left text-sm transition",
+                              "grid grid-cols-1 gap-4 px-6 py-4 md:grid-cols-12 md:items-center",
                               isActive ? "bg-muted" : "hover:bg-muted/60"
-                            }`}
+                            )}
                           >
-                            <div className="col-span-3">
+                            <div className="space-y-1 md:col-span-3">
                               <div className="font-medium text-foreground">{tenant.kentemId}</div>
                               <div className="text-xs text-muted-foreground">{tenant.customerName}</div>
                             </div>
-                            <div className="col-span-3 flex flex-wrap items-center gap-2">
-                              <Badge variant="muted">デキ: {tenant.families["デキスパート"]}</Badge>
-                              <Badge variant="info">INNO: {tenant.families["INNOSiTE"]}</Badge>
-                              <Badge variant="success">クラウド: {tenant.families["クラウド"]}</Badge>
+                            <div className="space-y-1 md:col-span-3">
+                              <div className="text-xs font-medium text-muted-foreground md:hidden">ファミリ内訳</div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Badge variant="muted">デキ: {tenant.families["デキスパート"]}</Badge>
+                                <Badge variant="info">INNO: {tenant.families["INNOSiTE"]}</Badge>
+                                <Badge variant="success">クラウド: {tenant.families["クラウド"]}</Badge>
+                              </div>
                             </div>
-                            <div className="col-span-2">{tenant.contracts.length}</div>
-                            <div className="col-span-2">
-                              {formatDate(tenant.nearest)}（残{daysLeft(tenant.nearest)}日）
+                            <div className="space-y-1 md:col-span-2">
+                              <div className="text-xs font-medium text-muted-foreground md:hidden">契約数</div>
+                              <div>{tenant.contracts.length}</div>
                             </div>
-                            <div className="col-span-2 text-right pr-3">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  setSelectedTenantKid(tenant.kentemId);
-                                }}
-                              >
-                                詳細
-                              </Button>
+                            <div className="space-y-1 md:col-span-2">
+                              <div className="text-xs font-medium text-muted-foreground md:hidden">最短満了</div>
+                              <div>
+                                {formatDate(tenant.nearest)}（残{daysLeft(tenant.nearest)}日）
+                              </div>
+                            </div>
+                            <div className="flex justify-end space-y-0 md:col-span-2 md:pr-3">
+                              <div className="w-full md:w-auto">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setSelectedTenantKid(tenant.kentemId);
+                                  }}
+                                  className="w-full md:w-auto"
+                                >
+                                  詳細
+                                </Button>
+                              </div>
                             </div>
                           </button>
                         );
@@ -935,7 +949,7 @@ export default function App() {
                   </ScrollArea>
                 ) : (
                   <ScrollArea className="h-full">
-                    <div className="grid grid-cols-12 px-6 py-2 text-xs font-medium text-muted-foreground">
+                    <div className="hidden grid-cols-12 px-6 py-2 text-xs font-medium text-muted-foreground md:grid">
                       <div className="col-span-3">受注番号 / 顧客</div>
                       <div className="col-span-2">KENTEM ID</div>
                       <div className="col-span-3">主要製品</div>
@@ -950,30 +964,42 @@ export default function App() {
                             key={order.id}
                             type="button"
                             onClick={() => setSelectedOrderId(order.id)}
-                            className={`grid w-full grid-cols-12 items-center px-6 py-3 text-left text-sm transition ${
+                            className={cn(
+                              "w-full text-left text-sm transition",
+                              "grid grid-cols-1 gap-4 px-6 py-4 md:grid-cols-12 md:items-center",
                               isActive ? "bg-muted" : "hover:bg-muted/60"
-                            }`}
+                            )}
                           >
-                            <div className="col-span-3">
+                            <div className="space-y-1 md:col-span-3">
                               <div className="font-medium text-foreground">{order.orderNumber}</div>
                               <div className="text-xs text-muted-foreground">{order.customerName}</div>
                             </div>
-                            <div className="col-span-2 flex items-center gap-2">
-                              <Badge variant="muted">{order.kentemId}</Badge>
+                            <div className="space-y-1 md:col-span-2">
+                              <div className="text-xs font-medium text-muted-foreground md:hidden">KENTEM ID</div>
+                              <div className="flex items-center gap-2">
+                                <Badge variant="muted">{order.kentemId}</Badge>
+                              </div>
                             </div>
-                            <div className="col-span-3 text-muted-foreground">{order.productSummary}</div>
-                            <div className="col-span-2 text-muted-foreground">
+                            <div className="space-y-1 text-muted-foreground md:col-span-3">
+                              <div className="text-xs font-medium text-muted-foreground md:hidden text-foreground/80">主要製品</div>
+                              <div>{order.productSummary}</div>
+                            </div>
+                            <div className="space-y-1 text-muted-foreground md:col-span-2">
+                              <div className="text-xs font-medium text-muted-foreground md:hidden text-foreground/80">出荷日 / 受信</div>
                               <div>出荷: {formatDate(order.shippingDate)}</div>
                               <div className="text-xs text-muted-foreground">受信: {timeHHMM(order.receivedAt)}</div>
                             </div>
-                            <div className="col-span-2 flex items-center justify-end gap-2">
-                              <Badge variant={statusBadge[order.status]}>{order.status}</Badge>
-                              {(order.errors > 0 || order.warns > 0) && (
-                                <div className="flex items-center gap-1">
-                                  {order.errors > 0 && <Badge variant="danger">E{order.errors}</Badge>}
-                                  {order.warns > 0 && <Badge variant="warning">W{order.warns}</Badge>}
-                                </div>
-                              )}
+                            <div className="space-y-1 md:col-span-2 md:pr-3">
+                              <div className="text-xs font-medium text-muted-foreground md:hidden text-foreground/80">状態 / エラー</div>
+                              <div className="flex flex-wrap items-center justify-start gap-2 md:justify-end">
+                                <Badge variant={statusBadge[order.status]}>{order.status}</Badge>
+                                {(order.errors > 0 || order.warns > 0) && (
+                                  <div className="flex items-center gap-1">
+                                    {order.errors > 0 && <Badge variant="danger">E{order.errors}</Badge>}
+                                    {order.warns > 0 && <Badge variant="warning">W{order.warns}</Badge>}
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           </button>
                         );
